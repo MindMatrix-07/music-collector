@@ -1,0 +1,13 @@
+name: Trigger Collector
+
+on:
+  schedule:
+    - cron: '*/5 * * * *' # Every 5 minutes
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  ping-vercel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Collector Endpoint
+        run: curl -I https://musiccollector.vercel.app/api/cron
