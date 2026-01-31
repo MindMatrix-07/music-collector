@@ -272,7 +272,12 @@
     <div id="login-overlay" class="login-overlay">
         <div class="login-box">
             <h2 style="color: #ff4444;">🔒 Admin Access</h2>
-            <input type="password" id="password" placeholder="Passkey" onkeyup="if(event.key==='Enter') login()">
+            <input type="password" id="password" placeholder="Passkey" style="margin-bottom: 10px;">
+            <!-- Turnstile Widget -->
+            <div id="turnstile-widget"
+                style="margin: 10px 0; min-height: 65px; display: flex; justify-content: center;"></div>
+            <p id="login-status" style="color: #e74c3c; min-height: 20px; font-size: 0.9rem;"></p>
+            <button class="btn btn-green" onclick="login()">ENTER</button>
         </div>
     </div>
 
@@ -358,33 +363,78 @@
     <!-- TOAST -->
     <div id="toast" class="toast">Action Complete</div>
 
+    <!-- Turnstile Script -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onloadTurnstileCallback" async
+        defer></script>
+
     <script>
-        let TOKEN = localStorage.getItem('admin_pass');
-        if (TOKEN) login(true);
+        // Session Storage ONLY (Clears when tab closes)
+        let TOKEN = sessionStorage.getItem('admin_pass');
+        let TURNSTILE_ID = null;
+
+        // Init
+        if (TOKEN) {
+            // Validate existing token
+            refreshStats().then(ok => {
+                if (ok) showApp();
+                else logout();
+            });
+        }
+
+        window.onloadTurnstileCallback = function () {
+            // Renders the Turnstile widget
+            TURNSTILE_ID = turnstile.render('#turnstile-widget', {
+                sitekey: '0x4AAAAAACWBg7fNNlLEoGnG',
+                theme: 'dark'
+            });
+        };
 
         // --- AUTH ---
-        async function login(auto = false) {
-            const pass = auto ? TOKEN : document.getElementById('password').value;
-            if (!pass) return;
+        async function login() {
+            const pass = document.getElementById('password').value;
+            const status = document.getElementById('login-status');
+
+            if (!pass) return status.textContent = 'Password Required';
+
+            // Get Captcha Token
+            let token = null;
+            if (TURNSTILE_ID !== null) {
+                token = turnstile.getResponse(TURNSTILE_ID);
+            }
+
+            // Note: backend will enforce token presence if secret is set.
+            status.textContent = 'Verifying...';
 
             try {
-                // Verify by fetching stats
-                const res = await fetch('/api/admin?action=stats', { headers: { 'x-admin-password': pass } });
+                const res = await fetch('/api/admin?action=login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pass, token: token })
+                });
+
                 if (res.ok) {
                     TOKEN = pass;
-                    localStorage.setItem('admin_pass', pass);
-                    document.getElementById('login-overlay').classList.add('hidden');
-                    document.getElementById('app').classList.remove('hidden');
-                    const data = await res.json();
-                    updateDash(data);
+                    sessionStorage.setItem('admin_pass', pass);
+                    showApp();
+                    refreshStats();
                 } else {
-                    if (!auto) alert('Access Denied');
+                    const data = await res.json();
+                    status.textContent = data.error || 'Access Denied';
+                    if (TURNSTILE_ID !== null) turnstile.reset(TURNSTILE_ID);
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+                status.textContent = 'Network Error';
+            }
+        }
+
+        function showApp() {
+            document.getElementById('login-overlay').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
         }
 
         function logout() {
-            localStorage.removeItem('admin_pass');
+            sessionStorage.removeItem('admin_pass');
             location.reload();
         }
 
@@ -404,7 +454,11 @@
         // --- DATA FETCHING ---
         async function refreshStats() {
             const res = await api('stats');
-            if (res) updateDash(res);
+            if (res) {
+                updateDash(res);
+                return true;
+            }
+            return false;
         }
 
         function updateDash(data) {
@@ -509,6 +563,10 @@
         async function api(action) {
             try {
                 const res = await fetch(`/api/admin?action=${action}`, { headers: { 'x-admin-password': TOKEN } });
+                if (res.status === 401) {
+                    logout();
+                    return null;
+                }
                 return await res.json();
             } catch (e) {
                 console.error(e);

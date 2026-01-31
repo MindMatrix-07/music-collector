@@ -8,12 +8,41 @@ module.exports = async (req, res) => {
     const adminPass = process.env.ADMIN_PASSWORD;
     const userPass = req.headers['x-admin-password'];
 
-    // SECURITY CHECK
+    const action = req.query.action;
+
+    // LOGIN ACTION (Verify Captcha)
+    if (req.method === 'POST' && action === 'login') {
+        const { password, token } = req.body;
+        const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
+
+        // 1. Check Password
+        if (password !== adminPass) {
+            return res.status(401).json({ error: 'Invalid Password' });
+        }
+
+        // 2. Verify Turnstile (if configured)
+        if (turnstileSecret && token) {
+            const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    secret: turnstileSecret,
+                    response: token
+                })
+            });
+            const verifyData = await verifyRes.json();
+            if (!verifyData.success) {
+                return res.status(403).json({ error: 'Captcha Validation Failed' });
+            }
+        }
+
+        return res.status(200).json({ success: true });
+    }
+
+    // SECURITY CHECK (For all other actions)
     if (!adminPass || userPass !== adminPass) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
-
-    const action = req.query.action;
 
     try {
         // DELETE ACTION (POST)
