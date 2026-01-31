@@ -12,6 +12,6 @@
     "dependencies": {
         "@supabase/supabase-js": "^2.39.0",
         "dotenv": "^16.3.1",
-        "ytmusicapi": "^5.0.0"
+        "ytmusic-api": "^5.3.0"
     }
 }
