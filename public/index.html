@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restricted Access</title>
+    <style>
+        body {
+            margin: 0;
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .login-box {
+            text-align: center;
+        }
+
+        input {
+            background: #111;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            outline: none;
+            text-align: center;
+            font-size: 1.2rem;
+        }
+
+        input:focus {
+            border-color: #0f0;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .dashboard {
+            width: 90%;
+            max-width: 800px;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: #111;
+            padding: 20px;
+            border: 1px solid #333;
+            border-radius: 8px;
+        }
+
+        .stat-val {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #2ecc71;
+        }
+
+        .btn {
+            background: #2ecc71;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            background: #27ae60;
+        }
+
+        .log-area {
+            background: #111;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 20px;
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #333;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- LOGIN -->
+    <div id="login-container" class="login-box">
+        <h2 style="color: #ff3333;">⚠️ RESTRICTED SYSTEM ⚠️</h2>
+        <p>Enter Access Code</p>
+        <input type="password" id="password" onkeyup="if(event.key==='Enter') login()">
+        <p id="error-msg" style="color: red; margin-top: 10px; opacity: 0; transition: opacity 0.5s;">Access Denied</p>
+    </div>
+
+    <!-- DASHBOARD (Hidden) -->
+    <div id="dashboard" class="dashboard hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1>Music Collector Node</h1>
+            <button class="btn" style="background: #e74c3c; color: white;" onclick="logout()">LOGOUT</button>
+        </div>
+
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div>Pending Requests</div>
+                <div id="q-count" class="stat-val">-</div>
+            </div>
+            <div class="stat-card">
+                <div>Total Tracks</div>
+                <div id="t-count" class="stat-val">-</div>
+            </div>
+            <div class="stat-card">
+                <div>Status</div>
+                <div id="sys-status" class="stat-val" style="color: #3498db;">IDLE</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 30px;">
+            <h3>Target Queue</h3>
+            <button class="btn" id="force-btn" onclick="forceRun()">⚡ FORCE COLLECTION CYCLE</button>
+        </div>
+
+        <div class="log-area" id="logs">
+            [System] Waiting for command...
+        </div>
+    </div>
+
+    <script>
+        let TOKEN = localStorage.getItem('admin_pass');
+
+        if (TOKEN) login(true);
+
+        async function login(auto = false) {
+            const pass = auto ? TOKEN : document.getElementById('password').value;
+            if (!pass) return;
+
+            try {
+                const res = await fetch('/api/admin', {
+                    headers: { 'x-admin-password': pass }
+                });
+
+                if (res.ok) {
+                    TOKEN = pass;
+                    localStorage.setItem('admin_pass', pass);
+                    document.getElementById('login-container').classList.add('hidden');
+                    document.getElementById('dashboard').classList.remove('hidden');
+                    refreshStats();
+                } else {
+                    if (!auto) showError();
+                }
+            } catch (e) {
+                if (!auto) showError();
+            }
+        }
+
+        async function refreshStats() {
+            if (!TOKEN) return;
+            const res = await fetch('/api/admin', { headers: { 'x-admin-password': TOKEN } });
+            const data = await res.json();
+            document.getElementById('q-count').innerText = data.pending;
+            document.getElementById('t-count').innerText = data.total;
+            log('Stats updated.');
+        }
+
+        async function forceRun() {
+            log('Initiating Forced Collection Cycle...');
+            const res = await fetch('/api/cron', { headers: { 'x-admin-password': TOKEN } });
+            const text = await res.text();
+            log('Server: ' + text);
+            setTimeout(refreshStats, 2000);
+        }
+
+        function showError() {
+            const el = document.getElementById('error-msg');
+            el.style.opacity = 1;
+            setTimeout(() => el.style.opacity = 0, 2000);
+        }
+
+        function logout() {
+            localStorage.removeItem('admin_pass');
+            location.reload();
+        }
+
+        function log(msg) {
+            const l = document.getElementById('logs');
+            l.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}<br>` + l.innerHTML;
+        }
+
+        setInterval(refreshStats, 30000);
+    </script>
+</body>
+
+</html>
