@@ -369,6 +369,12 @@
 
     <script>
         // Session Storage ONLY (Clears when tab closes)
+        // MIGRATION: Clear old localStorage key if it exists
+        if (localStorage.getItem('admin_pass')) {
+            localStorage.removeItem('admin_pass');
+            console.log('Cleared old persistent session.');
+        }
+
         let TOKEN = sessionStorage.getItem('admin_pass');
         let TURNSTILE_ID = null;
 
