@@ -62,12 +62,28 @@ async function processQueue() {
                 }
             };
 
-            // Write to Tracks Table
+            // Write to Tracks Table (Deduplicated by youtube_id)
             const { error: insertError } = await supabase
                 .from('tracks')
-                .insert(trackData);
+                .upsert(trackData, {
+                    onConflict: 'playback_metadata->>youtube_id',
+                    ignoreDuplicates: true
+                });
 
-            if (insertError) throw insertError;
+            if (insertError) {
+                // If the dynamic key upsert fails due to DB restriction, fallback to manual check
+                const { data: existing } = await supabase
+                    .from('tracks')
+                    .select('id')
+                    .eq('playback_metadata->>youtube_id', match.videoId)
+                    .maybeSingle();
+
+                if (existing) {
+                    console.log(`[Skip] Already exists: ${match.videoId}`);
+                } else {
+                    throw insertError;
+                }
+            }
 
             // Remove from queue
             await supabase
@@ -75,7 +91,7 @@ async function processQueue() {
                 .delete()
                 .eq('id', req.id);
 
-            console.log(`[Success] Collected: ${trackData.title} by ${trackData.artist}`);
+            console.log(`[Success] Processed: ${trackData.title} by ${trackData.artist}`);
 
         } catch (err) {
             console.error(`[Failed] Could not process ${req.query}:`, err);
