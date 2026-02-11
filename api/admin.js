@@ -62,7 +62,7 @@ module.exports = async (req, res) => {
             const { data, error } = await supabase
                 .from('request_queue')
                 .select('*')
-                .order('created_at', { ascending: false }); // Show newest first
+                .order('requested_at', { ascending: false }); // Show newest first
             //.limit(100); 
 
             if (error) throw error;
@@ -74,7 +74,7 @@ module.exports = async (req, res) => {
             const { data, error } = await supabase
                 .from('tracks')
                 .select('*')
-                .order('created_at', { ascending: false })
+                .order('last_updated', { ascending: false })
                 .limit(50); // Limit to last 50 for performance
 
             if (error) throw error;

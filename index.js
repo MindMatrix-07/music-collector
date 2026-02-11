@@ -62,25 +62,27 @@ async function processQueue() {
                 }
             };
 
-            // Write to Tracks Table (Deduplicated by youtube_id)
-            const { error: insertError } = await supabase
+            // 3. Check availability manually (since we don't have a unique constraint on JSONB field)
+            const { data: existing, error: checkError } = await supabase
                 .from('tracks')
-                .upsert(trackData, {
-                    onConflict: 'playback_metadata->>youtube_id',
-                    ignoreDuplicates: true
-                });
+                .select('id')
+                .eq('playback_metadata->>youtube_id', match.videoId)
+                .maybeSingle();
 
-            if (insertError) {
-                // If the dynamic key upsert fails due to DB restriction, fallback to manual check
-                const { data: existing } = await supabase
+            if (checkError) {
+                console.error(`[Error] Checking existence for ${match.videoId}:`, checkError);
+                throw checkError;
+            }
+
+            if (existing) {
+                console.log(`[Skip] Already exists: ${match.videoId}`);
+            } else {
+                // Insert new track
+                const { error: insertError } = await supabase
                     .from('tracks')
-                    .select('id')
-                    .eq('playback_metadata->>youtube_id', match.videoId)
-                    .maybeSingle();
+                    .insert(trackData);
 
-                if (existing) {
-                    console.log(`[Skip] Already exists: ${match.videoId}`);
-                } else {
+                if (insertError) {
                     throw insertError;
                 }
             }
